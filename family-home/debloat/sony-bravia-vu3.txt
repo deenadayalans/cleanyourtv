@@ -1,0 +1,30 @@
+# Sony BRAVIA VU3 (device BRAVIA_VU3_4K, Realtek), Google TV 14 (API 34), build UKR1.240726.001
+# Applied 2026-10-23 in four batches (work/batch1.txt .. batch4.txt) with tools/disable.sh; this file is
+# the union, for reading. Undo: work/restore.sh (it restores each batch from its own record).
+# Already disabled before this session, left alone: m2.seeds.iot(.remotestart), m2.seeds.auth,
+# m2.devicecontrolservice, sonypicturescore, b2b.vendorprotocol, apps.mediashell (Chromecast).
+# Google's launcher (launcherx) is ENABLED on purpose: it answers the remote's app buttons.
+
+# Batch 1: Sony promos, store demo and help tiles
+com.sony.dtv.promos
+com.sony.dtv.sonyselect
+com.sony.dtv.sonytab
+com.sony.dtv.multiscreendemo
+com.sony.dtv.smarthelp
+com.sony.dtv.helpguidecontents
+# Batch 2: ad services and Google leftovers
+com.android.adservices.api
+com.android.federatedcompute.services
+com.android.ondevicepersonalization.services
+com.google.android.feedback
+com.google.android.play.games
+com.google.android.partnersetup
+com.google.android.onetimeinitializer
+com.google.android.syncadapters.calendar
+com.android.printspooler
+android.autoinstalls.config.google.gtvpai
+com.android.gallery3d
+# Batch 3: off by choice
+com.google.android.marvin.talkback
+# Batch 4: launcher handover (its 3 old saved Wi-Fi networks were forgotten first)
+com.google.android.tungsten.setupwraith

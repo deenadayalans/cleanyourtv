@@ -316,6 +316,18 @@
                 android:clipToPadding="false"
                 android:orientation="horizontal">
 
+                <!-- Personal branch: shows or hides the theme's wallpapers (PersonalHome); gone without wallpapers. -->
+                <TextView
+                    android:id="@+id/btnWallpaper"
+                    style="@style/TopButton"
+                    android:visibility="gone"
+                    android:maxWidth="220dp"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:text="@string/wallpaper_toggle"
+                    android:drawableStart="@drawable/ic_picture"
+                    android:nextFocusDown="@+id/grid" />
+
                 <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopButton"

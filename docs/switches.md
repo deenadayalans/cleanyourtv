@@ -23,6 +23,15 @@ the rules. Keys from before this rule are on its wanted list; a screenshot for o
 | Key | Screenshot |
 |---|---|
 | `columns` | <img src="../themes/six-columns/screenshot.jpg" width="320" alt="columns on a TV"> |
+| `logo_dock` | <img src="family-home-dock.jpg" width="320" alt="logo_dock on a TV"> |
+| `taglines` | <img src="family-home-dock.jpg" width="320" alt="taglines on a TV"> |
+| `clock_only` | <img src="family-home-dock.jpg" width="320" alt="clock_only on a TV"> |
+| `weather_places` | <img src="family-home-dock.jpg" width="320" alt="weather_places on a TV"> |
+| `weather_rotate_seconds` | <img src="family-home-dock.jpg" width="320" alt="weather_rotate_seconds on a TV"> |
+| `wallpaper_change_on_home` | <img src="family-home-dock.jpg" width="320" alt="wallpaper_change_on_home on a TV"> |
+| `wallpaper_bottom_shade` | <img src="family-home-dock.jpg" width="320" alt="wallpaper_bottom_shade on a TV"> |
+| `weather_effects` | <img src="family-home-snow.jpg" width="320" alt="weather_effects on a TV"> |
+| `birthdays` | <img src="family-home-birthday.jpg" width="320" alt="birthdays on a TV"> |
 | `sky_intensity` | <img src="sky-sunset.jpg" width="320" alt="sky_intensity on a TV"> |
 | `wallpaper_rotation_minutes` | <img src="../themes/scenes/screenshot.jpg" width="320" alt="wallpaper_rotation_minutes on a TV"> |
 | `festival` | <img src="../themes/dussehra/screenshot.jpg" width="320" alt="festival on a TV"> |

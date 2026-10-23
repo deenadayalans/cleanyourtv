@@ -209,6 +209,34 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** Tile names and bundled banners that replace the app's own (config.xml, app_labels and app_banners). */
     private final Map<String, String> appLabels, appBanners;
     private final List<Entry> items = new ArrayList<>();
+    /** PersonalHome logo_dock: dock tiles show the app's white logo instead of its banner. */
+    private boolean logoDock;
+    /** White logos by file (or package, for a lettermark), made the first time a dock tile shows one. */
+    private final Map<String, LogoArt> logos = new HashMap<>();
+    /** Returns to Home so far: an app with several logos shows the next one on each. */
+    private int logoVisit;
+
+    void setLogoDock(boolean on) {
+        logoDock = on;
+    }
+
+    /** The wallpaper set's font for the names under the dock logos; null keeps the layout's font. */
+    private android.graphics.Typeface nameFont, defaultNameFont;
+    private float nameScale = 1f;
+
+    void setNameFont(android.graphics.Typeface font, float scale) {
+        if (font == nameFont && scale == nameScale) return;
+        nameFont = font;
+        nameScale = scale;
+        if (logoDock && dockRow && !items.isEmpty()) notifyItemRangeChanged(0, Math.min(dockSize, items.size()));
+    }
+
+    /** A new visit to Home: dock apps with more than one logo take the next. */
+    void setLogoVisit(int visit) {
+        if (!logoDock || visit == logoVisit) return;
+        logoVisit = visit;
+        if (dockRow && !items.isEmpty()) notifyItemRangeChanged(0, Math.min(dockSize, items.size()));
+    }
 
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
         this.ctx = ctx;
@@ -425,7 +453,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         h.card.setFocusable(true);
         h.name.setText(e.name);
         // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
-        h.name.setVisibility(dockRow && position < dockSize && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
+        boolean logo = logoDock && dockRow && position < dockSize;
+        h.name.setVisibility(dockRow && position < dockSize && restNameAlpha == 0f && !logo ? View.INVISIBLE : View.VISIBLE);
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
         h.name.setAlpha(focused ? 1f : restNameAlpha);
         h.card.setScaleX(focused && animations ? focusScale() : 1f);
@@ -437,7 +466,15 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         // A fully opaque banner covers the whole card (centerCrop), so the card's own fill under it is drawn for
         // nothing on every frame; keep it under banners with transparent parts and under icon tiles.
         h.card.setBackground(e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
-        if (e.banner != null) {
+        h.banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        h.banner.setPadding(0, 0, 0, 0);
+        h.banner.setAlpha(1f);
+        if (defaultNameFont == null) defaultNameFont = h.name.getTypeface();
+        h.name.setTypeface(logo && nameFont != null ? nameFont : defaultNameFont);
+        h.name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, logo ? 14f * nameScale : 14f);
+        if (logo) {
+            bindLogo(h, e);
+        } else if (e.banner != null) {
             h.banner.setImageDrawable(e.banner);
             h.banner.setVisibility(View.VISIBLE);
             h.icon.setVisibility(View.GONE);
@@ -465,6 +502,33 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             }
             return true;
         });
+    }
+
+    /** logo_dock: the white logo centred on a bare tile, sized by LogoArt.fit; no card fill under it. */
+    private void bindLogo(Holder h, Entry e) {
+        java.io.File file = LogoArt.pick(ctx, e.pkg, logoVisit);
+        String key = file != null ? file.getPath() : e.pkg;
+        LogoArt art = logos.get(key);
+        if (art == null) {
+            art = LogoArt.load(ctx, file, e.label);
+            if (art != null) logos.put(key, art);
+        }
+        h.card.setBackground(null);
+        h.icon.setVisibility(View.GONE);
+        h.label.setVisibility(View.GONE);
+        if (art == null) {
+            h.banner.setImageDrawable(null);
+            h.banner.setVisibility(View.GONE);
+            return;
+        }
+        ViewGroup.LayoutParams lp = h.card.getLayoutParams();
+        int[] size = art.fit(lp.width, lp.height);
+        int padX = Math.max(0, (lp.width - size[0]) / 2), padY = Math.max(0, (lp.height - size[1]) / 2);
+        h.banner.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        h.banner.setPadding(padX, padY, padX, padY);
+        h.banner.setImageBitmap(art.bitmap);
+        h.banner.setVisibility(View.VISIBLE);
+        h.banner.setAlpha(0.9f);   // light, slightly see-through white over the photo
     }
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */

@@ -20,7 +20,10 @@
         <item>com.netflix.ninja</item>
         <item>com.amazon.amazonvideo.livingroom</item>
         <item>com.google.android.youtube.tv</item>
+        <item>com.spotify.tv.android</item>
+        <item>com.apple.atve.androidtv.appletv</item>
         <item>in.startv.hotstar</item>
+        <item>com.sonyliv</item>
     </string-array>
     <!-- With fewer dock_apps than columns (or a dock app that is not installed), the free dock slots take
          the first grid apps, so the dock never shows a gap. false leaves them empty (#162); a theme can
@@ -29,12 +32,12 @@
 
     <!-- Apps never shown as tiles (e.g. the Live TV app, which the Inputs menu already covers). -->
     <string-array name="hidden_apps">
-        <item>com.mediatek.wwtv.tvcenter</item>
-        <item>com.mitv.gallery</item>
+        <item>com.android.tv</item>
+        <item>com.sony.dtv.ecodashboard</item>
     </string-array>
 
     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
-    <string name="live_tv_package" translatable="false">com.mediatek.wwtv.tvcenter</string>
+    <string name="live_tv_package" translatable="false">com.android.tv</string>
 
     <!-- Open the Live TV app above the first time Home comes up after the TV is switched on, for sets that are
          mostly used for broadcast TV. Once per boot: Home after that stays Home. Can also be set with
@@ -166,13 +169,17 @@
          still opens on a tap; "hold:scan:490:..." works for scancodes. A key with only a hold entry does nothing
          on a tap. A listed app that is not installed leaves the button doing nothing. Leave empty to omit. -->
     <string-array name="app_keys" translatable="false">
+        <item>201:com.google.android.youtube.tv</item>
+        <item>202:com.google.android.youtube.tvmusic</item>
+        <item>191:com.netflix.ninja</item>
+        <item>189:com.amazon.amazonvideo.livingroom</item>
     </string-array>
 
     <!-- Package of the stock launcher, for TVs whose firmware turns it back on after it was disabled. XGIMI's
          com.xgimi.xrmservice does, on every one of its remote keys, power included (docs/TROUBLESHOOTING.md).
          Whenever that launcher's home screen comes up anyway, HomeKeyService (HOME_KEY_SERVICE=1) sends the TV
          straight back here. A theme's config.json can set it too. Leave empty to omit. -->
-    <string name="stock_home_redirect" translatable="false"></string>
+    <string name="stock_home_redirect" translatable="false">com.google.android.apps.tv.launcherx</string>
 
     <!-- Show the Solar Hijri (Shamsi) date used in Iran and Afghanistan, e.g. "27 Mehr 1405", above the
          Gregorian date. -->
@@ -258,7 +265,7 @@
 
     <!-- Tiles per row in the grid; the dock always has this many slots. Tiles are 180dp wide at 4 columns and
          shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a 1080p TV). -->
-    <integer name="columns">4</integer>
+    <integer name="columns">7</integer>
 
     <!-- Basic motion is on; advanced effects are opt-in in the launcher's own Settings screen. -->
     <bool name="animations">true</bool>
@@ -353,4 +360,33 @@
          colour washes down from the top edge and fades to black, brightest along the top). The cinematic shelf
          keeps its own glow. Can also be set with "glow_style": "horizon" in a theme's config.json. -->
     <string name="glow_style" translatable="false">radial</string>
+
+    <!-- Personal home screen (PersonalHome, this branch only). Each key can also be set in a theme's config.json. -->
+    <!-- The dock as white logos from files/logos/<package>.png (any PNG with transparency; only its shape is used),
+         with no tiles, band or glass; a missing logo is a white lettermark. The focused logo grows and its name
+         fades in below. -->
+    <bool name="logo_dock">false</bool>
+    <!-- No greeting and no date beside the clock. -->
+    <bool name="clock_only">false</bool>
+    <!-- A different picture from the theme's wallpapers/ each time Home comes back from an app. -->
+    <bool name="wallpaper_change_on_home">false</bool>
+    <!-- A black gradient over the lower part of the wallpaper, darker still while the grid is scrolled down. -->
+    <bool name="wallpaper_bottom_shade">false</bool>
+    <!-- Weather beside the clock, from Open-Meteo, as "Name=latitude,longitude": the places take turns. Empty leaves
+         the weather out, and the launcher then makes no network request at all. -->
+    <string-array name="weather_places" translatable="false">
+    </string-array>
+    <!-- Seconds each weather place stays before the next fades in (5 to 120). -->
+    <integer name="weather_rotate_seconds">12</integer>
+    <!-- With weather_places: the place on screen's weather over the whole screen (snow, rain, a storm with lightning,
+         fog, clouds, stars at night), drawn only while Home is showing. -->
+    <bool name="weather_effects">false</bool>
+    <!-- A line above the dock for the focused app, as "package=line"; several lines per app take turns, one per
+         return to Home. An app without one shows its name. -->
+    <string-array name="taglines" translatable="false">
+    </string-array>
+    <!-- Birthdays as "Name=DD-MM": on the day, "Happy birthday, Name!" under the clock and a confetti burst each time
+         Home opens. Best kept in the theme's config.json, so names and dates stay out of the source. -->
+    <string-array name="birthdays" translatable="false">
+    </string-array>
 </resources>

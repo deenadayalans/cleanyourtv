@@ -19,6 +19,7 @@ import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Typeface;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -65,6 +66,7 @@ import android.view.animation.LayoutAnimationController;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.TextClock;
 import android.widget.RelativeLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
@@ -82,6 +84,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
@@ -131,6 +134,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean coocaaSources;
 
     private AppAdapter adapter;
+    /** This branch's personal keys: logo dock, taglines, clock only, weather, wallpaper on every return. */
+    private PersonalHome personal;
+    /** The weather beside the clock, or null without weather_places. */
+    private WeatherLine weather;
+    /** weather_effects: the shown place's weather over the screen, or null. */
+    private WeatherFx weatherFx;
+    /** birthdays: the greeting under the header and the confetti, made on the first birthday seen. */
+    private TextView birthdayLine;
+    private ConfettiView confetti;
+    /** clock_only's date line and the weather line, which take the wallpaper set's font with the clock. */
+    private TextView dateLine, weatherText;
+    /** Returns to Home so far, so each one can show the next tagline. */
+    private static int visits;
+    /** Logo dock: glides the glow to the focused tile, sideways and up and down. */
+    private SpringAnimation glowSpring, glowSpringY;
+    private float glowTargetY;
+    /** Where moveGlow's oval sits on the screen, as a fraction of the height (setAmbient draws it there). */
+    private static final float GLOW_Y = 0.78f;
     private RecyclerView grid;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
@@ -355,6 +376,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
         Config cfg = Config.load(this);
+        personal = PersonalHome.load(this);   // after Config.load, which refreshes the theme copy it reads
         appLibrarySelection = cfg.appLibrarySelection;
         // restore_key_services: after a force stop, put back the remote's accessibility helpers that Android took
         // off the list (needs WRITE_SECURE_SETTINGS, granted by build-and-install with RESTORE_KEY_SERVICES=1).
@@ -391,7 +413,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // black under it is a second full-screen fill on every frame for nothing. The starting window still uses
         // the theme's background, so launch looks the same.
         getWindow().setBackgroundDrawable(null);
-        wallpaperPlayer = new WallpaperPlayer(this, root, cfg);
+        wallpaperPlayer = new WallpaperPlayer(this, root, cfg, personal.wallpaperChangeOnHome, personal.wallpaperBottomShade);
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
@@ -420,6 +442,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // dock_title false: the name above the dock (and the cinematic lines under it) never shows; the glow
         // still follows the dock.
         if (!cfg.dockTitle) hero.setVisibility(View.GONE);
+        if (personal.logoDock) {
+            // A tagline rather than a name: smaller, and cut short before it runs off the screen.
+            heroName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 36f);
+            heroName.setEllipsize(TextUtils.TruncateAt.END);
+            heroName.setMaxWidth(Math.round(getResources().getDisplayMetrics().widthPixels * 0.8f));
+            // Light, slightly see-through white over the photo, with no shadow.
+            heroName.setTextColor(0xD9FFFFFF);
+            ((TextView) findViewById(R.id.clock)).setTextColor(0xE6FFFFFF);
+            ((TextView) findViewById(R.id.ampm)).setTextColor(0xB3FFFFFF);
+        }
         greeting = findViewById(R.id.greeting);
         clockBlock = findViewById(R.id.leftBlock);
         greetingColor = greeting.getCurrentTextColor();
@@ -451,6 +483,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             date.setTextSize(11f);
             date.setPadding(0, (int) (4 * density), 0, 0);
         }
+        setUpClockLine();
         vpnApp = cfg.vpnApp;
         moduleCards = cfg.moduleCards;
         hiddenApps = new HashSet<>(cfg.hiddenApps);
@@ -511,7 +544,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public void onChildViewDetachedFromWindow(@NonNull View v) {
             }
         });
-        if (dockRow) grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding));
+        if (dockRow && personal.logoDock) {
+            // Logo dock: the same spacing, but no band; the logos float on the wallpaper.
+            grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding) {
+                @Override
+                public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+                }
+            });
+        } else if (dockRow) grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding));
         if (cfg.fadeRows) TopFade.attach(grid, 48 * density);
         // Reduced motion: the tiles are simply there, with no entrance (reloadApps skips it there too).
         if (animations && !reducedMotion) {
@@ -519,6 +559,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     AnimationUtils.loadAnimation(this, R.anim.tile_enter), 0.06f));
         }
         adapter = new AppAdapter(this, this, COLUMNS, cfg);
+        adapter.setLogoDock(personal.logoDock);
         dockApps = cfg.dockApps;
         fillDockLeavesSlots = !cfg.fillDock;
         Order savedOrder = Order.load(Order.file(this));
@@ -553,10 +594,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             grid.post(this::refitGlass);
         });
 
+        if (personal.wallpaperBottomShade) {
+            grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+                @Override
+                public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                    wallpaperPlayer.scrolled(rv.computeVerticalScrollOffset() / Math.max(1f, rv.getHeight() * 0.5f));
+                }
+            });
+        }
+
         // Keep the glass glued to its tile while the grid scrolls.
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                if (personal.logoDock && ambientGlow) scrollGlow(dy);
                 if (!glassShown) return;
                 glassTargetY -= dy;
                 glassScrollShift -= dy;
@@ -676,6 +727,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
         btnLibraryTop.setOnKeyListener(pillKeys);
+        setUpWallpaperButton(pillKeys);
         if (advancedEffects) {
             for (View button : new View[]{btnInputs, btnWifi, btnReorder, btnLibraryTop, btnSettings}) {
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
@@ -839,6 +891,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 break;
         }
         if (openLiveTvAfterBoot()) return;
+        visits++;
+        adapter.setLogoVisit(visits);
+        applyRandomFont();
+        celebrateBirthdays();
+        if (weather != null) weather.start();
+        if (weatherFx != null) weatherFx.start();
         updateGreeting();
         updateRace();
         // The network and Inputs pills keep their state while Home is in the background, and callbacks update them
@@ -1024,6 +1082,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.removeCallbacks(showIdleClock);
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
+        if (weather != null) weather.stop();
+        if (weatherFx != null) weatherFx.stop();
+        if (confetti != null) confetti.stop();
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -1086,6 +1147,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onDestroy();
         unregisterReceiver(packageReceiver);
         wallpaperPlayer.close();
+        if (weather != null) weather.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.unregisterCallback(inputCallback);
@@ -1492,6 +1554,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         r.set(0, 0, card.getWidth(), card.getHeight());
         root.offsetDescendantRectToMyCoords(card, r);
         float pad = 6f * density;        // matches GlassView's glow inset
+        if (personal.logoDock && dockRow && position < COLUMNS) {
+            // Logo dock: no glass; the logo's own zoom, its name and the glow mark the focus.
+            hideGlass();
+            focusDock(position, card, r);
+            return;
+        }
         float scale = adapter.focusScale();
         float w = card.getWidth() * scale + 2 * pad;
         float h = card.getHeight() * scale + 2 * pad;
@@ -1536,25 +1604,65 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         View item = (View) card.getParent();
         if (dockRow && position < COLUMNS) {
-            // Dock: park it at the bottom of the screen and show the top shelf for this app.
-            int decoratedTop = item.getTop() - (int) (6 * density);
-            int dy = decoratedTop - grid.getPaddingTop();
-            // A 1px mismatch used to start a scroll on every dock move. Only scroll when the row is
-            // actually off; reduced motion does it in one jump so it does not fight the highlight.
-            boolean scroll = Math.abs(dy) > (int) (8 * density);
-            if (scroll) {
-                if (!animations || reducedMotion) grid.scrollBy(0, dy);
-                else grid.smoothScrollBy(0, dy);
-            }
-            showHero(position, scroll ? r.top - dy : r.top);
+            focusDock(position, card, r);
         } else {
             // Below the dock (or in a plain grid) the glow follows the tile without the big name; letting it
             // fade out left the grid on plain black.
             showGlowOnly(position);
+            if (personal.logoDock && ambientGlow) moveGlow(r.exactCenterX(), r.exactCenterY());
             // Scroll just enough so the whole glass (not only the tile) is visible.
             revealRect.set(0, -(int) pad * 2, item.getWidth(), item.getHeight() + (int) pad);
             grid.requestChildRectangleOnScreen(item, revealRect, reducedMotion);
         }
+    }
+
+    /** Dock: park it at the bottom of the screen and show the top shelf for this app. */
+    private void focusDock(int position, View card, Rect r) {
+        if (personal.logoDock && ambientGlow) moveGlow(r.exactCenterX(), r.exactCenterY());
+        View item = (View) card.getParent();
+        int decoratedTop = item.getTop() - (int) (6 * density);
+        int dy = decoratedTop - grid.getPaddingTop();
+        // A 1px mismatch used to start a scroll on every dock move. Only scroll when the row is
+        // actually off; reduced motion does it in one jump so it does not fight the highlight.
+        boolean scroll = Math.abs(dy) > (int) (8 * density);
+        if (scroll) {
+            if (!animations || reducedMotion) grid.scrollBy(0, dy);
+            else grid.smoothScrollBy(0, dy);
+        }
+        showHero(position, scroll ? r.top - dy : r.top);
+    }
+
+    /**
+     * Logo dock: the glow's oval is drawn at the screen's middle, just above the dock line (GLOW_Y of the height);
+     * slide it under the focused tile, on the dock or in the grid below.
+     */
+    private void moveGlow(float centerX, float centerY) {
+        float tx = centerX - root.getWidth() / 2f, ty = centerY - root.getHeight() * GLOW_Y;
+        if (glowSpring == null) {
+            glowSpring = new SpringAnimation(ambient, DynamicAnimation.TRANSLATION_X);
+            glowSpringY = new SpringAnimation(ambient, DynamicAnimation.TRANSLATION_Y);
+            for (SpringAnimation s : new SpringAnimation[]{glowSpring, glowSpringY}) {
+                s.setSpring(new SpringForce().setStiffness(reducedMotion ? 1500f : 260f).setDampingRatio(1f));
+            }
+        }
+        glowTargetY = ty;
+        if (!animations || ambient.getAlpha() == 0f) {
+            glowSpring.cancel();
+            glowSpringY.cancel();
+            ambient.setTranslationX(tx);
+            ambient.setTranslationY(ty);
+        } else {
+            glowSpring.animateToFinalPosition(tx);
+            glowSpringY.animateToFinalPosition(ty);
+        }
+    }
+
+    /** The grid scrolled under a focused tile: the glow goes with it. */
+    private void scrollGlow(int dy) {
+        if (glowSpringY == null || dy == 0) return;
+        glowTargetY -= dy;
+        if (glowSpringY.isRunning()) glowSpringY.animateToFinalPosition(glowTargetY);
+        else ambient.setTranslationY(glowTargetY);
     }
 
     /** Refits the glass to the focused holder once the grid layout and tile dimensions settle. */
@@ -1576,7 +1684,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     // ---- top shelf -------------------------------------------------------------------------------
 
     private void showHero(int position, float dockTopInRoot) {
-        String label = adapter.labelAt(position);
+        String tagline = personal.tagline(adapter.packageAt(position), visits);
+        String label = tagline != null ? tagline : adapter.labelAt(position);
         int color = adapter.ambientColorAt(position);
         float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
@@ -1781,7 +1890,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bmp);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            if (cinematic) {
+            if (personal.logoDock) {
+                // A wide soft oval just above the dock line, centred; moveGlow slides it under the focused logo.
+                canvas.save();
+                canvas.scale(1f, 0.45f, w * 0.5f, h * GLOW_Y);
+                paint.setShader(new RadialGradient(
+                        w * 0.5f, h * GLOW_Y, w * 0.30f,
+                        new int[]{0x8CFFFFFF, 0x2EFFFFFF, 0x00FFFFFF},
+                        new float[]{0f, 0.5f, 1f},
+                        Shader.TileMode.CLAMP));
+                canvas.drawRect(0, 0, w, h * 2.3f, paint);
+                canvas.restore();
+                paint.setShader(null);
+                paint.setAlpha(0);
+            } else if (cinematic) {
                 // Higher and stronger, from the corner away from the shelf's text: the app's colour floods
                 // the top of the screen over its artwork, and the scrim keeps the text side dark.
                 boolean rtl = getResources().getBoolean(R.bool.rtl_menu_bar);
@@ -2234,6 +2356,271 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Some TVs (Coocaa OS) set the network time without ACTION_TIME_CHANGED, so keep checking until it is valid. */
     private final Runnable clockCheck = this::updateClockVisibility;
+
+    /**
+     * The wallpaper button, next to Settings; only with a theme that has wallpapers. Each press moves to the next
+     * set: the theme's own pictures, then every folder under files/sets/ in name order, then off. The choice is kept.
+     */
+    private void setUpWallpaperButton(View.OnKeyListener keys) {
+        TextView button = findViewById(R.id.btnWallpaper);
+        if (!wallpaperPlayer.hasPictures()) return;
+        List<String> names = new ArrayList<>();
+        List<List<File>> sets = new ArrayList<>();
+        names.add("Family photos");
+        sets.add(wallpaperPlayer.themePictures());
+        File dir = Config.dir(this);
+        File[] folders = dir == null ? null : new File(dir, "sets").listFiles(File::isDirectory);
+        if (folders != null) {
+            Arrays.sort(folders, (a, b) -> a.getName().compareTo(b.getName()));
+            for (File f : folders) {
+                List<File> pictures = WallpaperRotation.images(f);
+                if (pictures.isEmpty()) continue;
+                names.add(PersonalHome.setName(f.getName()));
+                sets.add(pictures);
+            }
+        }
+        android.content.SharedPreferences prefs = getSharedPreferences("personal_home", MODE_PRIVATE);
+        // The older on/off choice carries over: off stays off.
+        int saved = prefs.getInt("wallpaper_set", prefs.getBoolean("wallpaper_on", true) ? 0 : sets.size());
+        int index = Math.max(0, Math.min(saved, sets.size()));
+        button.setVisibility(View.VISIBLE);
+        button.setOnKeyListener(keys);
+        applyWallpaperSet(button, sets, index);
+        showWallpaperName(button, names, index);
+        makeIconOnly(button);
+        button.setOnClickListener(v -> {
+            int next = (prefs.getInt("wallpaper_set", index) + 1) % (sets.size() + 1);
+            prefs.edit().putInt("wallpaper_set", next).apply();
+            applyWallpaperSet(button, sets, next);
+            showWallpaperName(button, names, next);
+            applyRandomFont();
+        });
+    }
+
+    /** The set's name, for TalkBack: the round button has no room to show it. */
+    private void showWallpaperName(TextView button, List<String> names, int index) {
+        button.setContentDescription(getString(R.string.wallpaper_toggle) + ": "
+                + (index < names.size() ? names.get(index) : "off"));
+    }
+
+    // ---- fonts: a different one on every visit to Home --------------------------------------------
+
+    /** Fonts the home screen takes turns with: null is the launcher's Outfit, then every .ttf in files/fonts/. */
+    private List<File> fontPool;
+    /** The font on screen now, as an index into fontPool. */
+    private static int fontNow = -1;
+    private final java.util.Random fontRandom = new java.util.Random();
+    /** The text sizes the views had before any font scaling, in px. */
+    private float[] baseTextSizes;
+
+    /** Picks another font from the pool, never the one already showing, and applies it. */
+    private void applyRandomFont() {
+        if (!personal.logoDock) return;
+        if (fontPool == null) {
+            fontPool = new ArrayList<>();
+            fontPool.add(null);
+            File[] found = Config.dir(this) == null ? null : new File(Config.dir(this), "fonts")
+                    .listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".ttf"));
+            if (found != null) {
+                Arrays.sort(found, (a, b) -> a.getName().compareTo(b.getName()));
+                fontPool.addAll(Arrays.asList(found));
+            }
+        }
+        if (fontPool.size() < 2 && fontNow >= 0) return;
+        int next = fontRandom.nextInt(fontPool.size());
+        if (fontPool.size() > 1 && next == fontNow) next = (next + 1 + fontRandom.nextInt(fontPool.size() - 1)) % fontPool.size();
+        fontNow = next;
+        applySetFont(fontPool.get(next));
+    }
+
+    /**
+     * The home screen's font: the clock, the date, the weather, the tagline and the dock names take it. Null is the
+     * launcher's Outfit. Variable fonts are set to a light and a medium weight.
+     */
+    private void applySetFont(File file) {
+        // Fonts change the style only: the header and the tagline keep the heights the launcher's own font gave
+        // them, so the dock, the grid and the icons never move. Before the first layout there is nothing to keep yet.
+        if (!lockTextHeights()) {
+            clockBlock.post(() -> applySetFont(file));
+            return;
+        }
+        Typeface light = null, medium = null;
+        if (file != null && file.isFile()) {
+            try {
+                light = new Typeface.Builder(file).setFontVariationSettings("'wght' 300").build();
+                medium = new Typeface.Builder(file).setFontVariationSettings("'wght' 500").build();
+            } catch (Exception e) {
+                light = medium = null;
+            }
+        }
+        if (light == null) {
+            try {
+                light = UiFont.get(this, R.string.font_light);
+                medium = UiFont.get(this, R.string.font_medium);
+            } catch (Exception e) {
+                return;   // keep whatever the views have
+            }
+        }
+        // Some faces are small for their size (Cormorant's lowercase): those are drawn a little larger.
+        float scale = PersonalHome.fontScale(file == null ? null : file.getName());
+        TextView[] views = {heroName, findViewById(R.id.clock), dateLine, weatherText, findViewById(R.id.ampm)};
+        if (baseTextSizes == null) {
+            baseTextSizes = new float[views.length];
+            for (int i = 0; i < views.length; i++) baseTextSizes[i] = views[i] == null ? 0 : views[i].getTextSize();
+        }
+        for (int i = 0; i < views.length; i++) {
+            if (views[i] == null) continue;
+            views[i].setTypeface(i == 4 ? medium : light);
+            views[i].setTextSize(TypedValue.COMPLEX_UNIT_PX, baseTextSizes[i] * scale);
+        }
+        adapter.setNameFont(medium, scale);
+    }
+
+    /**
+     * On someone's birthday (PersonalHome birthdays): "Happy birthday, Name!" in the open space under the header, and
+     * a confetti burst every time Home opens that day. Neither view exists on other days.
+     */
+    private void celebrateBirthdays() {
+        List<String> names = personal.birthdaysOn(LocalDate.now());
+        if (names.isEmpty()) {
+            if (birthdayLine != null) birthdayLine.setVisibility(View.GONE);
+            return;
+        }
+        if (birthdayLine == null) {
+            birthdayLine = new TextView(this);
+            birthdayLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 40f);
+            birthdayLine.setTextColor(0xF2FFFFFF);
+            birthdayLine.setGravity(Gravity.CENTER);
+            birthdayLine.setSingleLine(true);
+            birthdayLine.setEllipsize(TextUtils.TruncateAt.END);
+            birthdayLine.setFocusable(false);
+            try {
+                birthdayLine.setTypeface(UiFont.get(this, R.string.font_medium));
+            } catch (Exception ignored) {
+                // the system font is fine
+            }
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
+            lp.topMargin = Math.round(230 * density);
+            lp.leftMargin = lp.rightMargin = Math.round(60 * density);
+            root.addView(birthdayLine, root.indexOfChild(glass), lp);
+            confetti = new ConfettiView(this);
+            root.addView(confetti, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        birthdayLine.setText("🎉  " + PersonalHome.greeting(names) + "  🎂");
+        birthdayLine.setVisibility(View.VISIBLE);
+        if (!reducedMotion) confetti.burst();
+    }
+
+    private boolean textHeightsLocked;
+
+    /**
+     * Fixes the header (clock, date, weather, top icons) and the tagline at their current height, measured with the
+     * launcher's own font. False until they have been laid out.
+     */
+    private boolean lockTextHeights() {
+        if (textHeightsLocked) return true;
+        View header = (View) clockBlock.getParent();
+        if (header.getHeight() == 0 || heroName.getHeight() == 0) return false;
+        header.getLayoutParams().height = header.getHeight();
+        header.requestLayout();
+        ViewGroup.LayoutParams hp = heroName.getLayoutParams();
+        hp.height = heroName.getHeight();
+        heroName.setLayoutParams(hp);
+        heroName.setGravity(Gravity.BOTTOM | Gravity.START);   // a taller or shorter face sits on the same line
+        textHeightsLocked = true;
+        return true;
+    }
+
+    /** Set number index of sets, or off past the last one. */
+    private void applyWallpaperSet(TextView button, List<List<File>> sets, int index) {
+        boolean on = index < sets.size();
+        if (on) wallpaperPlayer.useSet(sets.get(index));
+        wallpaperPlayer.setShown(on);
+        showWallpaperState(button, on);
+    }
+
+    /** On: the picture icon in full white; off: dimmed. */
+    private void showWallpaperState(TextView button, boolean on) {
+        android.graphics.drawable.Drawable icon = button.getCompoundDrawablesRelative()[0];
+        if (icon != null) icon.mutate().setAlpha(on ? 255 : 90);
+    }
+
+    /**
+     * clock_only: the greeting, the divider and the date go. weather_places: the weather line takes their place
+     * beside the clock (WeatherLine).
+     */
+    private void setUpClockLine() {
+        View date = findViewById(R.id.date);
+        LinearLayout dateBlock = (LinearLayout) date.getParent();
+        LinearLayout row = (LinearLayout) dateBlock.getParent();
+        if (personal.clockOnly) {
+            greeting.setVisibility(View.GONE);
+            dateBlock.setVisibility(View.GONE);
+            int at = row.indexOfChild(dateBlock);
+            if (at > 0) row.getChildAt(at - 1).setVisibility(View.GONE);   // the divider
+            // A short date under the clock instead: "Fri, 23 Oct".
+            TextClock day = new TextClock(this);
+            day.setFormat12Hour("EEE, d MMM");
+            day.setFormat24Hour("EEE, d MMM");
+            day.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f);
+            day.setTextColor(0xD9FFFFFF);
+            day.setLetterSpacing(0.02f);
+            day.setIncludeFontPadding(false);
+            try {
+                day.setTypeface(UiFont.get(this, R.string.font_light));
+            } catch (Exception ignored) {
+                // the system font is fine
+            }
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            dlp.leftMargin = Math.round(6 * density);
+            dlp.topMargin = Math.round(6 * density);
+            ((LinearLayout) row.getParent()).addView(day, dlp);
+            dateLine = day;
+            // Keep the icons level with the clock, not with the bottom of the clock and the date.
+            View buttons = findViewById(R.id.topButtons);
+            RelativeLayout.LayoutParams blp = (RelativeLayout.LayoutParams) buttons.getLayoutParams();
+            blp.removeRule(RelativeLayout.ALIGN_BOTTOM);
+            blp.addRule(RelativeLayout.ALIGN_TOP, R.id.leftBlock);
+            blp.topMargin = Math.round(10 * density);
+            buttons.setLayoutParams(blp);
+        }
+        if (personal.weatherPlaces.isEmpty()) return;
+        TextView line = new TextView(this);
+        line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f);
+        line.setTextColor(0xD9FFFFFF);
+        line.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(0xD9FFFFFF));
+        line.setSingleLine(true);
+        line.setIncludeFontPadding(false);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        line.setCompoundDrawablePadding(Math.round(10 * density));
+        line.setFocusable(false);
+        try {
+            line.setTypeface(UiFont.get(this, R.string.font_light));
+        } catch (Exception ignored) {
+            // the system font is fine
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.BOTTOM;
+        lp.leftMargin = Math.round(22 * density);
+        lp.bottomMargin = Math.round(6 * density);
+        row.addView(line, row.indexOfChild(dateBlock) + 1, lp);
+        weatherText = line;
+        weather = new WeatherLine(line, personal.weatherPlaces, personal.weatherRotateSeconds);
+        if (personal.weatherEffects) {
+            weatherFx = new WeatherFx(this);
+            // Over the wallpaper and the glow, under the tagline, the clock and the dock.
+            root.addView(weatherFx, root.indexOfChild(hero), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            int preview = WeatherFx.kindNamed(personal.weatherPreview);
+            if (preview >= 0) weatherFx.show(preview);
+            else weather.setListener(r -> weatherFx.show(WeatherLine.windy(r.code, r.windKmh) ? WeatherFx.WIND
+                    : WeatherFx.kindFor(r.code, r.day)));
+        }
+    }
 
     private void updateClockVisibility() {
         boolean valid = System.currentTimeMillis() >= TIME_VALID_AFTER_MS;

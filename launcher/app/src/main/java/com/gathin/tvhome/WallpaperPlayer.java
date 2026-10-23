@@ -5,6 +5,9 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Shader;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -60,10 +63,29 @@ final class WallpaperPlayer {
     private final String latitude, longitude;
     private LocalDate sunDay;
     private int[] sun;
+    /** PersonalHome wallpaper_change_on_home: every start after the first picks another picture. */
+    private final boolean changeOnHome;
+    private boolean started, forceNext;
+    /** PersonalHome wallpaper_bottom_shade: the gradient painted into each picture, and the scroll shade over it. */
+    private final boolean bottomShade;
+    private View scrollShade;
+    /** The wallpaper on/off button: hidden, Home shows the plain colour and no picture is decoded. */
+    private boolean shown = true;
+    private final int plainColor;
+    /** The theme's own pictures, kept for when the wallpaper button comes back to them. */
+    private final List<File> themeFiles;
 
     WallpaperPlayer(Context context, FrameLayout root, Config config) {
+        this(context, root, config, false, false);
+    }
+
+    WallpaperPlayer(Context context, FrameLayout root, Config config, boolean changeOnHome, boolean bottomShade) {
         this.root = root;
+        this.changeOnHome = changeOnHome;
+        this.bottomShade = bottomShade;
+        this.plainColor = config.backgroundColor;
         files = new ArrayList<>(config.wallpapers);
+        themeFiles = Collections.unmodifiableList(new ArrayList<>(config.wallpapers));
         interval = config.wallpaperRotationMinutes * 60_000L;
         bitmapConfig = config.wallpaperTrueColor ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
         // The dim is painted into the picture (decode), so no full-screen shade layer is drawn on every frame.
@@ -92,6 +114,15 @@ final class WallpaperPlayer {
         if (config.wallpaperEnabled && !files.isEmpty()) {
             root.addView(image, 0, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            if (bottomShade) {
+                scrollShade = new View(context);
+                scrollShade.setBackgroundColor(0xFF000000);
+                scrollShade.setAlpha(0f);
+                scrollShade.setVisibility(View.GONE);
+                scrollShade.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                root.addView(scrollShade, 1, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
             showFirst();
         }
     }
@@ -104,7 +135,8 @@ final class WallpaperPlayer {
     private void showFirst() {
         String previous = preferences.getString("image", "");
         List<File> playable = playable();
-        File first = WallpaperRotation.find(playable, previous);
+        // change_on_home: a cold start is a return to Home too, so it opens on another picture as well.
+        File first = changeOnHome ? null : WallpaperRotation.find(playable, previous);
         if (first == null) first = WallpaperRotation.pick(playable, previous, order, random);
         while (first != null) {
             Bitmap bitmap = decode(first);
@@ -128,11 +160,56 @@ final class WallpaperPlayer {
 
     void start() {
         active = true;
+        if (changeOnHome && started) forceNext = true;
+        started = true;
         update();
+    }
+
+    /** bottom_shade: how far the grid is scrolled, 0 (dock) to 1, darkens the picture by up to 60 percent. */
+    void scrolled(float fraction) {
+        if (scrollShade == null || !shown) return;
+        float a = 0.6f * Math.max(0f, Math.min(1f, fraction));
+        scrollShade.setAlpha(a);
+        scrollShade.setVisibility(a > 0f ? View.VISIBLE : View.GONE);
     }
 
     void stop() {
         active = false;
+    }
+
+    /** The theme's own pictures (the first wallpaper set). */
+    List<File> themePictures() {
+        return themeFiles;
+    }
+
+    /** The wallpaper button's next set: these pictures from now on, starting with one of them at once. */
+    void useSet(List<File> set) {
+        if (set.isEmpty()) return;
+        files.clear();
+        files.addAll(set);
+        forceNext = true;
+        displayed = "";   // another set can reuse a file name (every single-picture theme has wallpaper.jpg)
+        update();
+    }
+
+    /** True when the theme brought pictures to show. */
+    boolean hasPictures() {
+        return image.getParent() != null;
+    }
+
+    /** The wallpaper on/off button. Back on, the next picture of the collection comes up. */
+    void setShown(boolean on) {
+        if (on == shown || !hasPictures()) return;
+        shown = on;
+        image.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (scrollShade != null && !on) scrollShade.setVisibility(View.GONE);
+        if (on) {
+            root.setBackground(null);
+            forceNext = true;
+            update();
+        } else {
+            root.setBackgroundColor(plainColor);
+        }
     }
 
     /** The pictures the rotation picks from now: wallpaper_moods' group for the time of day, or the whole collection. */
@@ -153,15 +230,16 @@ final class WallpaperPlayer {
     }
 
     void update() {
-        if (!active || closed || loading || files.isEmpty()) return;
+        if (!active || closed || loading || !shown || files.isEmpty()) return;
         String previous = preferences.getString("image", "");
         // A picture outside the time of day's group (the group changed) is replaced at once, not after the interval.
         List<File> playable = playable();
         File selected = WallpaperRotation.find(playable, previous);
         long changed = preferences.getLong("changed", 0);
-        if (selected == null || WallpaperRotation.due(changed, System.currentTimeMillis(), interval)) {
+        if (selected == null || forceNext || WallpaperRotation.due(changed, System.currentTimeMillis(), interval)) {
             selected = WallpaperRotation.pick(playable, previous, order, random);
         }
+        forceNext = false;
         if (selected == null || selected.getName().equals(displayed)) return;
         File next = selected;
         loading = true;
@@ -246,6 +324,56 @@ final class WallpaperPlayer {
         return key.toString();
     }
 
+    /**
+     * Black from 45 percent of the visible height down: 0, 35, 70 and 85 percent opacity, so white logos stay
+     * readable over a bright photo. "Visible" is the part centerCrop leaves on a screen of another shape.
+     */
+    private void paintBottomShade(Bitmap bmp) {
+        int bw = bmp.getWidth(), bh = bmp.getHeight();
+        float visibleH = Math.min(bh, bw * (float) height / width);
+        float top = (bh - visibleH) / 2f;
+        Canvas canvas = new Canvas(bmp);
+        Paint paint = new Paint();
+        // A bright photo (a white wall, a sky) gets more shade where the white text and logos sit; a dark one less.
+        float lowLight = brightness(bmp, 0, bw, top + visibleH * 0.72f, top + visibleH * 0.92f);
+        float boost = Math.max(0f, Math.min(1f, (lowLight - 0.35f) / 0.4f));
+        paint.setShader(new LinearGradient(0, top + visibleH * 0.45f, 0, top + visibleH,
+                new int[]{0x00000000, shade(0.35f + 0.2f * boost), shade(0.7f + 0.15f * boost), shade(0.85f + 0.07f * boost)},
+                new float[]{0f, 0.35f, 0.7f, 1f}, Shader.TileMode.CLAMP));
+        canvas.drawRect(0, top + visibleH * 0.45f, bw, bh, paint);
+        // Behind the clock, the date and the weather (left) and the icons (right): the brighter of the two decides,
+        // nothing on a dark photo, up to 65 percent on a white one.
+        float y0 = top + visibleH * 0.04f, y1 = top + visibleH * 0.26f;
+        float topLight = Math.max(brightness(bmp, 0, bw * 0.45f, y0, y1), brightness(bmp, bw * 0.78f, bw, y0, y1));
+        float a = 0.65f * Math.max(0f, Math.min(1f, (topLight - 0.35f) / 0.35f));
+        if (a > 0f) {
+            paint.setShader(new LinearGradient(0, top, 0, top + visibleH * 0.36f,
+                    new int[]{shade(a), shade(a * 0.75f), 0x00000000}, new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, bw, top + visibleH * 0.36f, paint);
+        }
+    }
+
+    private static int shade(float alpha) {
+        return Math.round(Math.max(0f, Math.min(1f, alpha)) * 255) << 24;
+    }
+
+    /** Average brightness, 0..1, of a rectangle of the picture, from a sparse grid of samples. */
+    static float brightness(Bitmap bmp, float fromX, float toX, float fromY, float toY) {
+        int x0 = Math.max(0, (int) fromX), x1 = Math.min(bmp.getWidth() - 1, (int) toX);
+        int y0 = Math.max(0, (int) fromY), y1 = Math.min(bmp.getHeight() - 1, (int) toY);
+        if (y1 <= y0 || x1 <= x0) return 0f;
+        long sum = 0;
+        int n = 0;
+        for (int y = y0; y <= y1; y += Math.max(1, (y1 - y0) / 12)) {
+            for (int x = x0; x <= x1; x += Math.max(1, (x1 - x0) / 30)) {
+                int p = bmp.getPixel(x, y);
+                sum += (((p >> 16) & 0xFF) * 299 + ((p >> 8) & 0xFF) * 587 + (p & 0xFF) * 114) / 1000;
+                n++;
+            }
+        }
+        return n == 0 ? 0f : sum / (255f * n);
+    }
+
     /** Puts a picture on screen and releases the previous one after a frame has drawn the new one. */
     private void show(Bitmap bitmap) {
         Bitmap old = current;
@@ -272,10 +400,11 @@ final class WallpaperPlayer {
                 options.inTargetDensity = scale[1];
             }
             options.inPreferredConfig = bitmapConfig;
-            options.inMutable = dimColor != 0;
+            options.inMutable = dimColor != 0 || bottomShade;
             Bitmap decoded = BitmapFactory.decodeFile(file.getPath(), options);
             if (decoded == null) return null;
             if (dimColor != 0) new Canvas(decoded).drawColor(dimColor);
+            if (bottomShade) paintBottomShade(decoded);
             // One copy in GPU memory instead of a software bitmap plus its texture; the decode stays off the UI
             // thread for rotations, and Home's return no longer uploads 4-8 MB to the GPU.
             Bitmap gpu = decoded.copy(Bitmap.Config.HARDWARE, false);
