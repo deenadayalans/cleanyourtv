@@ -7,6 +7,31 @@ so the same code works on any TV the main launcher supports.
 > This branch adds the `INTERNET` permission for the weather (Open-Meteo, no account, at most one request every
 > 30 minutes while Home is on screen). The upstream launcher never has network access, so this lives in a fork.
 
+## Before and after
+
+| Before: the stock Google TV home | After: the family home |
+|---|---|
+| <img src="screenshots/before-stock-google-tv.jpg" width="420" alt="The stock Google TV home screen"> | <img src="screenshots/after-family-home.jpg" width="420" alt="The family home screen: clock, date, weather, white logo dock, tagline"> |
+
+The stock home was showing a network error that morning (a VPN app was blocking it); the apps row is what it
+normally offers. The family home shows one of the pictures drawn for this folder; at home it shows our own photos.
+
+## Weather on screen
+
+The place shown in the weather line brings its weather onto the screen:
+
+| Sunny | Clear night | Rain |
+|---|---|---|
+| <img src="screenshots/effect-sun.jpg" width="280" alt="Sun rays"> | <img src="screenshots/effect-stars.jpg" width="280" alt="Twinkling stars"> | <img src="screenshots/effect-rain.jpg" width="280" alt="Rain in three depths"> |
+| **Storm** | **Snow** | **Wind** |
+| <img src="screenshots/effect-storm.jpg" width="280" alt="Heavy rain with lightning"> | <img src="screenshots/effect-snow.jpg" width="280" alt="Spinning snowflakes"> | <img src="screenshots/effect-wind.jpg" width="280" alt="Leaves blowing across"> |
+
+And on someone's birthday, while the family photos are the wallpaper:
+
+<img src="../docs/family-home-birthday.jpg" width="420" alt="Happy birthday greeting with confetti">
+
+(The network name is blurred in every screenshot; the birthday name is a made-up example.)
+
 ## What it does
 
 - **White logo dock**: the dock apps as white logos floating on the wallpaper, no tiles. The focused one grows,
