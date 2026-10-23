@@ -113,9 +113,12 @@ final class PersonalHome {
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
+    /** The largest fontScale: the header keeps room for it. */
+    static final float MAX_FONT_SCALE = 1.18f;
+
     /** How much larger to draw a font whose letters are small for its size: Cormorant, by about a fifth. */
     static float fontScale(String fileName) {
-        return fileName != null && fileName.toLowerCase(java.util.Locale.ROOT).contains("cormorant") ? 1.18f : 1f;
+        return fileName != null && fileName.toLowerCase(java.util.Locale.ROOT).contains("cormorant") ? MAX_FONT_SCALE : 1f;
     }
 
     /** Whose birthday it is on this day (birthday_preview's name too), in list order. */

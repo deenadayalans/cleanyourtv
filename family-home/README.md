@@ -24,7 +24,7 @@ so the same code works on any TV the main launcher supports.
 - **Fonts**: a different open-licence font on every visit (Outfit, Fredoka, Josefin Sans, Exo 2, Cormorant
   Garamond, Raleway). Layout never moves with the font.
 - **Birthdays**: on someone's day, "Happy birthday, Name!" under the clock and a confetti burst each time Home
-  opens. Names and dates stay in your private folder.
+  opens, only while your own photos are the wallpaper set. Names and dates stay in your private folder.
 - **Wi-Fi pill**: the network name and a VPN badge (green when connected, red "VPN off" with `vpn_app` set).
 
 ## Public and private

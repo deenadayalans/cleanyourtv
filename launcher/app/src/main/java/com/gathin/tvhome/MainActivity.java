@@ -140,6 +140,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private WeatherLine weather;
     /** weather_effects: the shown place's weather over the screen, or null. */
     private WeatherFx weatherFx;
+    /** The wallpaper set on screen: 0 is the theme's own pictures (the family photos), -1 when there are none. */
+    private int wallpaperSet = -1;
     /** birthdays: the greeting under the header and the confetti, made on the first birthday seen. */
     private TextView birthdayLine;
     private ConfettiView confetti;
@@ -2394,6 +2396,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             applyWallpaperSet(button, sets, next);
             showWallpaperName(button, names, next);
             applyRandomFont();
+            celebrateBirthdays();   // wishes come and go with the family photos
         });
     }
 
@@ -2478,12 +2481,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /**
      * On someone's birthday (PersonalHome birthdays): "Happy birthday, Name!" in the open space under the header, and
-     * a confetti burst every time Home opens that day. Neither view exists on other days.
+     * a confetti burst every time Home opens that day, only while the family photos are the wallpaper (set 0).
+     * Neither view exists on other days.
      */
     private void celebrateBirthdays() {
-        List<String> names = personal.birthdaysOn(LocalDate.now());
+        List<String> names = wallpaperSet == 0 ? personal.birthdaysOn(LocalDate.now()) : Collections.<String>emptyList();
         if (names.isEmpty()) {
             if (birthdayLine != null) birthdayLine.setVisibility(View.GONE);
+            if (confetti != null) confetti.stop();
             return;
         }
         if (birthdayLine == null) {
@@ -2523,7 +2528,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (textHeightsLocked) return true;
         View header = (View) clockBlock.getParent();
         if (header.getHeight() == 0 || heroName.getHeight() == 0) return false;
-        header.getLayoutParams().height = header.getHeight();
+        // Room for the largest face (PersonalHome.fontScale) on the clock and the date line, kept once, so no font
+        // moves anything and none is cut off.
+        TextView clock = findViewById(R.id.clock);
+        float grow = PersonalHome.MAX_FONT_SCALE - 1f;
+        int extra = Math.round(grow * (clock.getHeight() + (dateLine != null ? dateLine.getHeight() : 0)));
+        header.getLayoutParams().height = header.getHeight() + extra;
         header.requestLayout();
         ViewGroup.LayoutParams hp = heroName.getLayoutParams();
         hp.height = heroName.getHeight();
@@ -2535,6 +2545,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Set number index of sets, or off past the last one. */
     private void applyWallpaperSet(TextView button, List<List<File>> sets, int index) {
+        wallpaperSet = index;
         boolean on = index < sets.size();
         if (on) wallpaperPlayer.useSet(sets.get(index));
         wallpaperPlayer.setShown(on);

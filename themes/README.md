@@ -113,7 +113,7 @@ A new key needs one there in the same pull request.
 | `weather_effects` | bool | Family home: the shown place's weather over the screen (snow, rain, storm, wind, stars, sun), only while Home is on screen (`false` by default) |
 | `wallpaper_change_on_home` | bool | Family home: another picture of the collection each time Home comes back (`false` by default) |
 | `wallpaper_bottom_shade` | bool | Family home: a black gradient painted into each picture under the dock, a bright photo's top shaded too, and a shade as the grid scrolls (`false` by default) |
-| `birthdays` | list of `"Name=DD-MM"` | Family home: on the day, "Happy birthday, Name!" and a confetti burst each time Home opens. Keep it out of public files (`family-home/build_config.py` merges it from `private/`) |
+| `birthdays` | list of `"Name=DD-MM"` | Family home: on the day, while the theme's own pictures (the family photos) are the wallpaper, "Happy birthday, Name!" and a confetti burst each time Home opens. Keep it out of public files (`family-home/build_config.py` merges it from `private/`) |
 | `cinematic_home` | bool | Cinematic top shelf: the focused dock app's artwork, softened, fills the top of the screen in its colour, with a larger name, "Last opened" (apps opened from Home), dock position dots, a focus glow in the app's colour and a translucent dock band; off by default |
 | `cinematic_dots` | bool | With `cinematic_home`, the dock position dots under the app's name (`true` by default); `false` leaves them out |
 | `cinematic_white_focus` | bool | With `cinematic_home`, the focus highlight stays white on the dock instead of taking the focused app's colour (`false` by default); `app_glow` still colours every tile |
